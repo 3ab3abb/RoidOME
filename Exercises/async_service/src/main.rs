@@ -11,7 +11,9 @@
 use serde::Deserialize ; 
 use std::fmt ; 
 
-use thiserror::Error ; 
+use thiserror::Error ;
+
+
 
 
 //Defining Custom Sensor Errors enum
@@ -138,6 +140,26 @@ enum DeviceEvent {
     Gas(GasSensor) , 
 }
 
+impl fmt::Display for DeviceEvent  { 
+
+    fn fmt (&self  , f:&mut fmt::Formatter ) -> fmt::Result {
+        
+        match self { 
+
+            DeviceEvent::TemperatureHumidity(r) => write!(f, "{}" , r) , 
+            DeviceEvent::Motion(r) => write!(f,"{}" ,r ) , 
+            DeviceEvent::Gas(r) => write!(f,"{}",r) , 
+            
+
+        }
+
+
+    }
+
+} 
+
+
+
 fn router(topic:&str , payload :&str ) -> Result<DeviceEvent , SensorError> { 
 
     match topic { 
@@ -163,10 +185,39 @@ fn router(topic:&str , payload :&str ) -> Result<DeviceEvent , SensorError> {
                 }
 
     }
+
+
+
+
 }
 
 
-fn main() {
+
+async fn handler( topic : &str , payload :&str ) {
+    // Simulating Network Delay with sleep().await
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    match router(topic,payload) { 
+        
+                Ok(event) => println!("{}",event) , 
+               Err(e) => println!("ERROR : {}" ,e ) , 
+        
+    }
+
+     
+
+
+}
+
+
+
+
+
+
+#[tokio::main]
+async fn main() {
+
+
+
 
 
 
@@ -200,7 +251,7 @@ fn main() {
     "#;
 
 
-
+// Bad payload 
     let bad_topic_raw = r#"
         {
             "id": "esp32_04",
@@ -212,60 +263,25 @@ fn main() {
 
 
 //________________________________________________
+//    Async 
 
 
+    let task1 = tokio::spawn(async move {
+        handler("home/sensors/temperature", temphum_raw).await;
+    });
+
+    let task2 = tokio::spawn(async move { 
+        handler ("home/sensors/motion" , motion_raw).await ; 
+    }) ;
+
+    let task3 = tokio::spawn(async move { 
+        handler ("home/sensors/gas" , gas_raw).await ; 
+    }) ; 
+
+    let _ = tokio::join!(task1,task2,task3) ; 
 
 
-
-match router("home/sensors/temperature" , temphum_raw) { 
-
-        Ok(DeviceEvent::TemperatureHumidity(r)) => println!("{}",r),
-        Ok(_) => println!("Unexpected event type ! ") , 
-        Err(SensorError::ParseError(e)) => println!("Parse Failed : {}" ,e) ,       Err(SensorError::UnknownTopic(e)) => println!("Unkown Topic :  {}",e),       Err(SensorError::MissingField(f)) => println!("Missing Field : {}",f) ,       
-
-
-    }
-
-
-match router("home/sensors/motion" ,motion_raw ) { 
-
-        Ok(DeviceEvent::Motion(r)) => println!("{}",r),
-        Ok(_) => println!("Unexpected event type ! ") , 
-        Err(SensorError::ParseError(e)) => println!("Parse Failed : {}" ,e) ,       Err(SensorError::UnknownTopic(e)) => println!("Unkown Topic :  {}",e),       Err(SensorError::MissingField(f)) => println!("Missing Field : {}",f) ,       
-
-
-    }
-
-match router("home/sensors/gas" ,gas_raw ) { 
-
-        Ok(DeviceEvent::Gas(r)) => println!("{}",r),
-        Ok(_) => println!("Unexpected event type ! ") , 
-        Err(SensorError::ParseError(e)) => println!("Parse Failed : {}" ,e) ,       Err(SensorError::UnknownTopic(e)) => println!("Unkown Topic :  {}",e),       Err(SensorError::MissingField(f)) => println!("Missing Field : {}",f) ,       
-
-
-    }
-
-
-match router("home/sensors/unk" ,bad_topic_raw ) { 
-
-        Ok(_) => println!("Unexpected Success !") , 
-        Err(SensorError::ParseError(e)) => println!("Parse Failed : {}" ,e) ,       Err(SensorError::UnknownTopic(e)) => println!("Unkown Topic :  {}",e),       Err(SensorError::MissingField(f)) => println!("Missing Field : {}",f) ,       
-
-
-    }
-
-
-
-
-
-
-        
-
-
-
-
-
-    
-        
+            
 }
+
 
