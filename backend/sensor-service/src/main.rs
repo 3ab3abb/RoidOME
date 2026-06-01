@@ -1,19 +1,11 @@
-
-
-
-
-
-
-
-
-
-
+// Dependencies -------
 use serde::Deserialize ; 
 use std::fmt ; 
-
 use thiserror::Error ;
+use rumqttc::{AsyncClient, MqttOptions, QoS, Event, Packet};
+use tokio::sync::mpsc;
 
-
+// ----------------------
 
 
 //Defining Custom Sensor Errors enum
@@ -34,6 +26,8 @@ enum SensorError {
 
 }
 
+//------------------------------------
+
 
 
 
@@ -47,27 +41,17 @@ struct TempHumidity {
     timestamp:i64 ,
 
 }
-
-
-
-
-
-
-
 impl fmt::Display for TempHumidity { 
-    
     fn fmt(&self , f:&mut fmt::Formatter) -> fmt::Result { 
-
         write!(
             f,
             "device : {} | temperature : {}°C |humidty : {}% , |timestamp : {}",
             self.id , self.temperature , self.humidity , self.timestamp 
               )
-               }
+    }
 
 }
 //________________________________________________
-
 // Motion Sensor  ---
 
 #[derive(Debug,Deserialize)]
@@ -105,10 +89,6 @@ struct GasSensor {
 } 
 
 
-
-
-
-
 impl fmt::Display for GasSensor { 
 
     fn fmt (&self , f:&mut fmt::Formatter) -> fmt::Result {
@@ -124,6 +104,7 @@ impl fmt::Display for GasSensor {
 
     }
 //________________________________________________
+
 
 //Parsing JSON Payloads
 fn parse<T: for<'de> serde::Deserialize<'de>>(raw: &str) -> Result<T, serde_json::Error> { 
@@ -159,7 +140,7 @@ impl fmt::Display for DeviceEvent  {
 } 
 
 
-
+// Router IMPLEMENTAION 
 fn router(topic:&str , payload :&str ) -> Result<DeviceEvent , SensorError> { 
 
     match topic { 
@@ -191,7 +172,9 @@ fn router(topic:&str , payload :&str ) -> Result<DeviceEvent , SensorError> {
 
 }
 
- async fn handler (topic: &str , payload:&str) {
+
+// Topic Handler --- 
+ async fn handler (topic: &str , payload:&str){ 
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     match router(topic , payload){ 
@@ -200,86 +183,59 @@ fn router(topic:&str , payload :&str ) -> Result<DeviceEvent , SensorError> {
         Err(e) => println!("Error while parsing : {}" , e ) , 
         
     }
-
-
-
-
-
 }
-
 
 
 
 
 #[tokio::main]
-async fn main() {
+async fn main() { 
+
+    tracing_subscriber::fmt::init() ; 
+
+    let mut mqttoptions = MqttOptions::new("roidome-backend" ,"localhost" , 1883) ; 
+    mqttoptions.set_keep_alive(std::time::Duration::from_secs(5)) ; 
 
 
+    let (client,mut eventloop) = AsyncClient::new(mqttoptions ,10);      
+    let (tx , mut rx) = mpsc::channel(100) ; 
 
 
+    client.subscribe("home/#" , QoS::AtMostOnce).await.unwrap() ;
 
 
+    tokio::spawn(async move  { 
+        
+            loop { 
+
+                match eventloop.poll().await { 
+        
+                    Ok(Event::Incoming(Packet::Publish(msg))) =>{
+    
+                        let topic = msg.topic.clone() ; 
+                        let payload =String::from_utf8(msg.payload.to_vec()).unwrap() ;  
+                        tx.send((topic, payload)).await.unwrap();
+ 
+
+                    }
+                    Err(e) => { 
+                        
+                        tracing::error!("MQTT ERROR : {}",e);
+                        break ; 
 
 
-// Payloads example 
-    let  temphum_raw = r#"
-        {
-            "id": "esp32_01",
-            "temperature": 24.5,
-            "humidity": 61.2,
-            "timestamp": 1234567890
-        }
-    "#;
+                    }
+                     _ => {}
+            }
+        } 
 
-
-  let   motion_raw = r#"
-        {
-            "id": "esp32_01",
-            "motion": true,
-            "timestamp": 1234567890
-        }
-    "#;
-
-    let  gas_raw = r#"
-        {
-            "id": "esp32_02",
-            "gas_level": 12.34,
-            "timestamp": 1234567890
-        }
-    "#;
-
-
-// Bad payload 
-    let bad_topic_raw = r#"
-        {
-            "id": "esp32_04",
-            "timestamp": 1234567890
-        }
-    "#;
-
-
-
-
-//________________________________________________
-//    Async 
-
-
-    let task1 = tokio::spawn(async move {
-        handler("home/sensors/temperature", temphum_raw).await;
-    });
-
-    let task2 = tokio::spawn(async move { 
-        handler ("home/sensors/motion" , motion_raw).await ; 
-    }) ;
-
-    let task3 = tokio::spawn(async move { 
-        handler ("home/sensors/gas" , gas_raw).await ; 
     }) ; 
 
-    let _ = tokio::join!(task1,task2,task3) ; 
-
-
-            
-}
-
-
+        while let Some((topic, payload)) = rx.recv().await {
+            match router(&topic, &payload) {
+                Ok(event) => tracing::info!("Received: {}", event),
+                Err(e) => tracing::error!("Error: {}", e),
+                    
+            }
+        }
+} 
