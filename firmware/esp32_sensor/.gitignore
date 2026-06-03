@@ -1,0 +1,3 @@
+.pio
+firmware/esp32_sensor/include/config.h
+
