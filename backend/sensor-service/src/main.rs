@@ -5,6 +5,8 @@ use thiserror::Error ;
 use rumqttc::{AsyncClient, MqttOptions, QoS, Event, Packet};
 use tokio::sync::mpsc;
 
+use sqlx::PgPool ;  
+
 // ----------------------
 
 
@@ -139,6 +141,20 @@ impl fmt::Display for DeviceEvent  {
 
 } 
 
+impl DeviceEvent { 
+
+
+    fn device_id(&self) -> &str { 
+
+        match self { 
+            
+            DeviceEvent::TemperatureHumidity(r) => &r.id , 
+            DeviceEvent::Motion(r) => &r.id ,
+            DeviceEvent::Gas(r) => &r.id ,
+        }
+    }
+}
+
 
 // Router IMPLEMENTAION 
 fn router(topic:&str , payload :&str ) -> Result<DeviceEvent , SensorError> { 
@@ -173,23 +189,52 @@ fn router(topic:&str , payload :&str ) -> Result<DeviceEvent , SensorError> {
 }
 
 
-// Topic Handler --- 
- async fn handler (topic: &str , payload:&str){ 
+// Insert sensor readings to Database 
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    match router(topic , payload){ 
-        
-        Ok(event) => println!("{}",event) ,   
-        Err(e) => println!("Error while parsing : {}" , e ) , 
-        
-    }
+
+async fn insert_reading(
+    pool: &PgPool,
+    device_id: &str,
+    sensor_type: &str,
+    payload: &str,
+) -> Result<(), sqlx::Error> {
+    let payload_json: serde_json::Value = serde_json::from_str(payload)
+        .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+    sqlx::query!(
+        "INSERT INTO sensor_readings (device_id, sensor_type, payload)
+         VALUES ($1, $2, $3)",
+        device_id,
+        sensor_type,
+        payload_json,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
+
+
+
+
+
 
 
 
 
 #[tokio::main]
 async fn main() { 
+
+
+    //Database Pool Setup-----
+    
+
+    let pool = PgPool::connect(&std::env::var("DATABASE_URL").unwrap())
+        .await
+        .expect("Failed to connect to PostgreSQL") ; 
+
+
+
 
     tracing_subscriber::fmt::init() ; 
 
@@ -208,6 +253,8 @@ async fn main() {
         
             loop { 
 
+
+               
                 match eventloop.poll().await { 
         
                     Ok(Event::Incoming(Packet::Publish(msg))) =>{
@@ -233,7 +280,14 @@ async fn main() {
 
         while let Some((topic, payload)) = rx.recv().await {
             match router(&topic, &payload) {
-                Ok(event) => tracing::info!("Received: {}", event),
+                Ok(event) => {
+                    tracing::info!("Received: {}", event);
+                    let sensor_type = topic.split('/').last().unwrap_or("unknown");
+                    let result = insert_reading(&pool , &event.device_id(),&sensor_type,&payload ).await ; 
+                    if let Err(e) = result { 
+                        tracing::error!("Failed to insert reading: {}",e) ; 
+                    }
+                }
                 Err(e) => tracing::error!("Error: {}", e),
                     
             }
