@@ -111,7 +111,7 @@ CREATE TABLE sensor_readings (
 ### 1. Clone the repo
 
 ```bash
-git clone git@github.com:3ab3ebb/RoidOME.git
+git clone git@github.com:3ab3abb/RoidOME.git
 cd RoidOME
 ```
 
