@@ -1,12 +1,15 @@
 
 #include "config.h"
 #include "TempHumidity.h"
+#include "MotionSensor.h"
+#include "GasSensor.h"
+
 #include <PubSubClient.h>
 #include <WiFi.h>
 
 
 
-WifiClient espClient; 
+WiFiClient espClient; 
 PubSubClient client(espClient) ;  
 
 
@@ -42,7 +45,7 @@ void connectMQTT() {
 		}else { 
 		
 			Serial.printf("failed , rc=%d - retrying\n",client.state()) ; 	
-
+			delay(MQTT_RETRY_DELAY_MS) ; 
 		}	
 	}
 
@@ -53,9 +56,12 @@ void connectMQTT() {
 void setup ()  { 
 
 	Serial.begin(115200) ; 
-	connectWiFI() ;  
+	connectWiFi() ;  
 	connectMQTT() ; 
-	initTempHumidity() ; 
+	initTempHumidity() ;
+	initMotion() ; 
+	initGas() ; 
+
 
 	
 } 
@@ -74,9 +80,10 @@ void loop() {
 
 		lastPublish = millis() ; 
 		readAndPublishTempHumidity(client) ; 
+		readAndPublishMotion(client);
+		readAndPublishGas(client) ; 
 
 	}
-
 } 
 
 

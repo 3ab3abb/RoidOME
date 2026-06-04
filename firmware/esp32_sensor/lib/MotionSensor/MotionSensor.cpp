@@ -4,23 +4,12 @@
 
 
 
- 
-
-
-
-
-
-
 void initMotion() {
-
-
 
 	pinMode(MOTION_PIN,INPUT) ; 	
 	Serial.println("PIR calibrating — wait 20s...");  	
 	delay(20000); 
   	Serial.println("Sensor Ready!");
-
-
 }
 
 
