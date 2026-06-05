@@ -11,3 +11,15 @@ COPY src ./src
 COPY .sqlx ./.sqlx
 ENV SQLX_OFFLINE=true
 RUN touch src/main.rs && cargo build --release
+RUN ls -la /app/target/release/ | grep sensor
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/sensor-service /usr/local/bin/sensor-service
+
+CMD ["sensor-service"]

@@ -227,27 +227,36 @@ async fn main() {
 
 
     //Database Pool Setup-----
+   
+    eprintln!("sensor-service starting...");
+
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set");
     
+    eprintln!("Connecting to database: {}", database_url);
+
+
 
     let pool = PgPool::connect(&std::env::var("DATABASE_URL").unwrap())
         .await
         .expect("Failed to connect to PostgreSQL") ; 
 
+    eprintln!("Database connected successfully");
 
+    tracing_subscriber::fmt::init();
 
+    let mqtt_host = std::env::var("MQTT_BROKER").unwrap_or_else(|_| "localhost".to_string());
+    eprintln!("Connecting to MQTT at {}:1883", mqtt_host);
 
-    tracing_subscriber::fmt::init() ; 
+    let mut mqttoptions = MqttOptions::new("roidome-backend", &mqtt_host, 1883);
+    mqttoptions.set_keep_alive(std::time::Duration::from_secs(5));
 
-    let mut mqttoptions = MqttOptions::new("roidome-backend" ,"localhost" , 1883) ; 
-    mqttoptions.set_keep_alive(std::time::Duration::from_secs(5)) ; 
+    let (client, mut eventloop) = AsyncClient::new(mqttoptions, 10);
+    let (tx, mut rx) = mpsc::channel(100);
 
-
-    let (client,mut eventloop) = AsyncClient::new(mqttoptions ,10);      
-    let (tx , mut rx) = mpsc::channel(100) ; 
-
-
-    client.subscribe("home/#" , QoS::AtMostOnce).await.unwrap() ;
-
+    eprintln!("Subscribing to home/#");
+    client.subscribe("home/#", QoS::AtMostOnce).await.unwrap();
+    eprintln!("Subscribed — starting event loop");
 
     tokio::spawn(async move  { 
         
