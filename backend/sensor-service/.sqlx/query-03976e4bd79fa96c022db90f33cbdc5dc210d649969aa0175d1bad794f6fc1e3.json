@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO sensor_readings (device_id, sensor_type, payload)\n         VALUES ($1, $2, $3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Varchar",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "03976e4bd79fa96c022db90f33cbdc5dc210d649969aa0175d1bad794f6fc1e3"
+}

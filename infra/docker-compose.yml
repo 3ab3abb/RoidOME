@@ -1,0 +1,29 @@
+services:
+
+  mosquitto:
+    image: eclipse-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  postgres:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=roidome
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  sensor-service:
+    build: ../backend/sensor-service
+    environment:
+      - DATABASE_URL=postgres://postgres:password@postgres/roidome
+    depends_on:
+      - postgres
+      - mosquitto
+
+volumes:
+  postgres_data:
+ 
