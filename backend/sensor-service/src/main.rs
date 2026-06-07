@@ -1,11 +1,13 @@
 // Dependencies -------
+
 use serde::Deserialize ; 
 use std::fmt ; 
 use thiserror::Error ;
 use rumqttc::{AsyncClient, MqttOptions, QoS, Event, Packet};
 use tokio::sync::mpsc;
-
-use sqlx::PgPool ;  
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
+use sqlx::PgPool ;
 
 // ----------------------
 
@@ -213,40 +215,61 @@ async fn insert_reading(
 
     Ok(())
 }
+// Base64 Decoding from MQTT payload 
+async fn ingest_from_mqtt(payload: &str) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+
+    let bytes =  STANDARD.decode(&payload)?;
+    Ok(bytes)
 
 
+}
+// Storing Frame on Disk inserting values DB 
+async fn store_frame(
+    pool : &PgPool,
+    device_id : &str,
+    source_type : &str,
+    bytes :Vec<u8>,)-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
+    
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let frames_dir = std::env::var("FRAMES_DIR").unwrap_or_else(|_| "./frames".to_string());
+    let dir = format!("{}/{}/{}" ,frames_dir,source_type,device_id ) ; 
+    let file_path = format!("{}/{}.jpg",dir,timestamp,) ; 
+    tokio::fs::create_dir_all(&dir).await? ;  
+    tokio::fs::write(&file_path,bytes).await?;         
+     sqlx::query!(
+        "INSERT INTO camera_frames (device_id, source_type,file_path)
+         VALUES ($1, $2, $3)",
+        device_id,
+        source_type,
+        file_path,
+    )
+    .execute(pool)
+    .await?;
 
+    Ok(())
+}
 
 
 
 
 
 #[tokio::main]
-async fn main() { 
+async fn main() {
 
-
-    //Database Pool Setup-----
-   
-    eprintln!("sensor-service starting...");
-
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
-    
-    eprintln!("Connecting to database: {}", database_url);
-
-
-
+   //Database Pool Setup-----
     let pool = PgPool::connect(&std::env::var("DATABASE_URL").unwrap())
         .await
         .expect("Failed to connect to PostgreSQL") ; 
 
-    eprintln!("Database connected successfully");
-
+   
     tracing_subscriber::fmt::init();
 
     let mqtt_host = std::env::var("MQTT_BROKER").unwrap_or_else(|_| "localhost".to_string());
-    eprintln!("Connecting to MQTT at {}:1883", mqtt_host);
+   
 
     let mut mqttoptions = MqttOptions::new("roidome-backend", &mqtt_host, 1883);
     mqttoptions.set_keep_alive(std::time::Duration::from_secs(5));
@@ -254,10 +277,8 @@ async fn main() {
     let (client, mut eventloop) = AsyncClient::new(mqttoptions, 10);
     let (tx, mut rx) = mpsc::channel(100);
 
-    eprintln!("Subscribing to home/#");
-    client.subscribe("home/#", QoS::AtMostOnce).await.unwrap();
-    eprintln!("Subscribed — starting event loop");
-
+        client.subscribe("home/#", QoS::AtMostOnce).await.unwrap();
+   
     tokio::spawn(async move  { 
         
             loop { 
@@ -288,6 +309,29 @@ async fn main() {
     }) ; 
 
         while let Some((topic, payload)) = rx.recv().await {
+            
+            if topic == "home/camera/frame" { 
+
+                let pool = pool.clone() ; 
+               
+
+                tokio::spawn (async move{
+                    match ingest_from_mqtt(&payload).await {
+                        Ok(bytes) => {
+
+                            if let Err(e)  = store_frame(&pool,"esp-cam-01","esp32cam",bytes).await { 
+
+                                tracing::error!("Failed to store frame: {}",e) ; 
+                            }
+                                    
+                        }
+                        Err(e) => tracing::error!("Failed to frame: {}",e) , 
+                    }
+ 
+                }); 
+                continue ;
+            }
+
             match router(&topic, &payload) {
                 Ok(event) => {
                     tracing::info!("Received: {}", event);
@@ -299,6 +343,7 @@ async fn main() {
                 }
                 Err(e) => tracing::error!("Error: {}", e),
                     
-            }
+            } 
         }
-} 
+}
+
