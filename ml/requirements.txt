@@ -1,0 +1,9 @@
+tensorflow-macos
+tensorflow-metal
+keras
+numpy
+pandas
+matplotlib
+scikit-learn
+jupyter
+psycopg2-binary
