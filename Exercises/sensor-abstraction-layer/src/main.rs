@@ -127,8 +127,62 @@ fn log_sensor(sensor: &dyn Sensor) {
 }
 
 
+fn router(topic:&str , payload :&str ) -> Result<DeviceEvent , SensorError> { 
+
+    match topic { 
+        "home/sensors/temperature" => {
+            let reading  = parse::<TempHumidity>(payload)? ; 
+            Ok(DeviceEvent::TemperatureHumidity(reading))
+        }
+
+        "home/sensors/motion" => {
+            let reading = parse::<MotionSensor>(payload)? ; 
+            Ok(DeviceEvent::Motion(reading)) 
+        }        
+            
+        "home/sensors/gas" => {
+            let reading = parse::<GasSensor>(payload)? ; 
+            Ok (DeviceEvent::Gas(reading)) 
+        }
+        
+        unknown_topic => { 
+                     
+                return Err(SensorError::UnknownTopic(unknown_topic.to_string())) ; 
+                
+                }
+
+    }
+}
+
+
+
+
+
+
 
 fn main() {
+
+
+
+    let messages: Vec<(&str, &str)> = vec![
+    ("home/sensors/temperature", r#"{"id":"esp32_01","temperature":24.5,"humidity":61.2,"timestamp":1234}"#),
+    ("home/sensors/motion",      r#"{"id":"esp32_01","motion":true,"timestamp":1234}"#),
+    ("home/sensors/unknown",     r#"{"id":"esp32_01"}"#),
+    ("home/sensors/gas",         r#"{"id":"esp32_02","gas_level":412.0,"timestamp":1234}"#),
+    ("home/sensors/temperature", r#"{"id":"esp32_01","temperature":22.1,"humidity":58.0,"timestamp":1235}"#),
+];
+
+
+    let events: Vec<DeviceEvent> = messages
+    .iter()
+    .filter(|(topic,_)| match *topic   {
+
+    "home/sensors/temperature" => true,  
+    "home/sensors/gas"  =>true, 
+    "home/sensors/motion" => true , 
+    _ => false ,
+    } ) ; 
+
 
 
 let example = TempHumidity { 
@@ -161,7 +215,11 @@ let example_1 = MotionSensor {
 
 
 log_sensor(&example) ; 
-log_sensor(&example_1) ; 
+log_sensor(&example_1) ;
+
+
+
+
 
 
 
