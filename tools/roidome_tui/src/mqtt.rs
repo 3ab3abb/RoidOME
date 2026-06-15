@@ -70,6 +70,13 @@ fn handle_message(app: &mut App,topic:&str , payload :&str ) {
                 app.update_gas(reading.gas_level) ; 
             }
         }
+
+
+        "home/camera/snapshot" => {
+                
+             eprintln!("Received snapshot path: {}", payload);
+             app.update_snapshot(payload.to_string());
+        }
         
         _ => {}
     }
@@ -102,7 +109,7 @@ pub async fn start_mqtt(app: Arc<Mutex<App>>){
                 eprintln!("MQTT error: {}", e);
                 break;
             }
-            _ => {}
+            _ => {eprintln!("Unhandled topic: '{}'", topic);}
         }
     }
 }

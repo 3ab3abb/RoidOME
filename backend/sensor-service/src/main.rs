@@ -217,18 +217,22 @@ async fn insert_reading(
 }
 // Base64 Decoding from MQTT payload 
 async fn ingest_from_mqtt(payload: &str) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
-
+    
+    let cleaned = payload.replace('\n', "").replace('\r', "");
     let bytes =  STANDARD.decode(&payload)?;
     Ok(bytes)
 
 
 }
-// Storing Frame on Disk inserting values DB 
+// Storing Frame on Disk and Base64 on Database , Sending to roidome-tui the file path 
 async fn store_frame(
     pool : &PgPool,
+    client: &AsyncClient,
     device_id : &str,
+    payload: &str,
     source_type : &str,
-    bytes :Vec<u8>,)-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    bytes :Vec<u8>,
+)-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     
     let timestamp = std::time::SystemTime::now()
@@ -241,17 +245,28 @@ async fn store_frame(
     tokio::fs::create_dir_all(&dir).await? ;  
     tokio::fs::write(&file_path,bytes).await?;         
      sqlx::query!(
-        "INSERT INTO camera_frames (device_id, source_type,file_path)
-         VALUES ($1, $2, $3)",
+        "INSERT INTO camera_frames (device_id, source_type,file_path,image_data)
+         VALUES ($1, $2, $3, $4)",
         device_id,
         source_type,
         file_path,
+        payload, 
     )
     .execute(pool)
     .await?;
 
+
+   client
+        .publish(
+            "home/camera/snapshot",
+            rumqttc::QoS::AtMostOnce,
+            false,
+            file_path.as_bytes(),
+        )
+        .await?;    
+
     Ok(())
-}
+}   
 
 
 
@@ -313,13 +328,21 @@ async fn main() {
             if topic == "home/camera/frame" { 
 
                 let pool = pool.clone() ; 
-               
+                let client = client.clone();
+                let payload = payload.clone() ; 
 
                 tokio::spawn (async move{
                     match ingest_from_mqtt(&payload).await {
                         Ok(bytes) => {
 
-                            if let Err(e)  = store_frame(&pool,"esp-cam-01","esp32cam",bytes).await { 
+                            if let Err(e)  = store_frame(
+                                &pool,
+                                &client,
+                                "esp-cam-01",
+                                &payload,
+                                "esp32cam",
+                                bytes,
+                                ).await { 
 
                                 tracing::error!("Failed to store frame: {}",e) ; 
                             }
@@ -330,6 +353,11 @@ async fn main() {
  
                 }); 
                 continue ;
+            }
+
+
+             if topic == "home/camera/snapshot" {
+            continue;
             }
 
             match router(&topic, &payload) {
