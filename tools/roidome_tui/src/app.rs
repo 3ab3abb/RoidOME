@@ -1,5 +1,8 @@
 use ratatui_image::{picker::Picker, protocol::StatefulProtocol};
 
+use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 pub struct App {
     pub temperature: f32,
     pub humidity: f32,
@@ -13,7 +16,19 @@ pub struct App {
     pub frame_count: u32,
     pub picker: Picker,
     pub image_state: Option<StatefulProtocol>,
+    pub devices: HashMap<String, DeviceStatus>,
 }
+
+
+
+
+pub struct DeviceStatus {
+    pub last_seen: u64,      // unix timestamp seconds
+    pub uptime: u64,
+    pub free_heap: u32,
+    pub rssi: i32,
+}
+
 
 impl App {
     // Picker created in main() before tokio runtime — passed in here
@@ -31,6 +46,7 @@ impl App {
             connected: false,
             picker,
             image_state: None,
+            devices: HashMap::new(),
         }
     }
 
@@ -66,4 +82,25 @@ impl App {
         self.message_count += 1;
         self.connected = true;
     }
+
+
+
+    pub fn update_heartbeat(&mut self, id: &str, uptime: u64, free_heap: u32, rssi: i32) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    self.devices.insert(id.to_string(), DeviceStatus {
+        last_seen: now,
+        uptime,
+        free_heap,
+        rssi,
+    });
+    self.message_count += 1;
+    self.connected = true;
+}
+
+
+
+
 }

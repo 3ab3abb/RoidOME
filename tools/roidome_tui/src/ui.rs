@@ -200,36 +200,76 @@ fn render_motion(frame: &mut Frame, area: Rect, app: &App) {
     );
 }
 
+
+
 fn render_device(frame: &mut Frame, area: Rect, app: &App) {
-    let block = accent_block("NODE");
+    let block = accent_block("NODES");
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    if app.devices.is_empty() {
+        frame.render_widget(
+            Paragraph::new(Span::styled("no heartbeats yet", label_style())),
+            inner,
+        );
+        return;
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let rows_constraints: Vec<Constraint> = app.devices
+        .keys()
+        .map(|_| Constraint::Length(3))
+        .collect();
+
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), Constraint::Length(1),
-            Constraint::Length(1), Constraint::Min(0),
-        ])
+        .constraints(rows_constraints)
         .split(inner);
 
-    let fields: &[(&str, &str)] = &[
-        ("id    ", &app.device_id),
-        ("broker", "localhost:1883"),
-        ("topic ", "home/#"),
-    ];
-    for (i, (label, value)) in fields.iter().enumerate() {
+    for (i, (id, status)) in app.devices.iter().enumerate() {
         if i >= rows.len() { break; }
+
+        let age = now.saturating_sub(status.last_seen);
+        let health_color = if age < 60 { OK_COL } else { ALERT_COL };
+        let health_label = if age < 60 { "● LIVE" } else { "○ STALE" };
+
+        let node_rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
+            .split(rows[i]);
+
         frame.render_widget(
             Paragraph::new(Line::from(vec![
-                Span::styled(*label, label_style()),
+                Span::styled(health_label, Style::default().fg(health_color).add_modifier(Modifier::BOLD)),
                 Span::raw("  "),
-                Span::styled(*value, Style::default().fg(TEXT)),
+                Span::styled(id.as_str(), Style::default().fg(TEXT)),
             ])),
-            rows[i],
+            node_rows[0],
+        );
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                format!("heap {}KB  rssi {}dBm", status.free_heap / 1024, status.rssi),
+                label_style(),
+            )),
+            node_rows[1],
+        );
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                format!("uptime {}s  seen {}s ago", status.uptime / 1000, age),
+                label_style(),
+            )),
+            node_rows[2],
         );
     }
 }
+
+
+
+
 
 fn render_camera(frame: &mut Frame, area: Rect, app: &mut App) {
     let block = accent_block("CAMERA");

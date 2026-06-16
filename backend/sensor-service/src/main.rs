@@ -15,6 +15,19 @@ use sqlx::PgPool ;
 //Defining Custom Sensor Errors enum
 
 
+
+#[derive(Debug, Deserialize)]
+struct Heartbeat {
+    id: String,
+    uptime: u64,
+    free_heap: u32,
+    rssi: i32,
+}
+
+
+
+
+
 #[derive(Debug,Error)]
 enum SensorError { 
 
@@ -123,6 +136,7 @@ enum DeviceEvent {
     TemperatureHumidity(TempHumidity) ,
     Motion(MotionSensor) ,
     Gas(GasSensor) , 
+    Heartbeat(Heartbeat),
 }
 
 impl fmt::Display for DeviceEvent  { 
@@ -134,7 +148,8 @@ impl fmt::Display for DeviceEvent  {
             DeviceEvent::TemperatureHumidity(r) => write!(f, "{}" , r) , 
             DeviceEvent::Motion(r) => write!(f,"{}" ,r ) , 
             DeviceEvent::Gas(r) => write!(f,"{}",r) , 
-            
+            DeviceEvent::Heartbeat(r) => write!(f, "heartbeat device:{} uptime:{}ms heap:{} rssi:{}dBm",
+                                                        r.id, r.uptime, r.free_heap, r.rssi),
 
         }
 
@@ -153,6 +168,7 @@ impl DeviceEvent {
             DeviceEvent::TemperatureHumidity(r) => &r.id , 
             DeviceEvent::Motion(r) => &r.id ,
             DeviceEvent::Gas(r) => &r.id ,
+            DeviceEvent::Heartbeat(r) => &r.id,
         }
     }
 }
@@ -176,6 +192,11 @@ fn router(topic:&str , payload :&str ) -> Result<DeviceEvent , SensorError> {
             let reading = parse::<GasSensor>(payload)? ; 
             Ok (DeviceEvent::Gas(reading)) 
         }
+
+       topic if topic.starts_with("home/device/") && topic.ends_with("/heartbeat") => {
+    let reading = parse::<Heartbeat>(payload)?;
+    Ok(DeviceEvent::Heartbeat(reading))
+}
         
         unknown_topic => { 
                      

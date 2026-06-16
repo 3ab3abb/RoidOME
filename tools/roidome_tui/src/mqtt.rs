@@ -77,6 +77,17 @@ fn handle_message(app: &mut App,topic:&str , payload :&str ) {
              eprintln!("Received snapshot path: {}", payload);
              app.update_snapshot(payload.to_string());
         }
+
+
+        topic if topic.starts_with("home/device/") && topic.ends_with("/heartbeat") => {
+            #[derive(serde::Deserialize)]
+            struct Heartbeat { id: String, uptime: u64, free_heap: u32, rssi: i32 }
+            if let Ok(h) = serde_json::from_str::<Heartbeat>(payload) {
+                app.update_heartbeat(&h.id, h.uptime, h.free_heap, h.rssi);
+            }
+        }
+
+
         
         _ => {eprintln!("Unhandled topic: '{}'", topic);}
 
