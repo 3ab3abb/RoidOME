@@ -3,3 +3,4 @@ firmware/**/.pio/** linguist-vendored
 Exercises/**/.pio/** linguist-vendored
 *.mk linguist-vendored
 Makefile linguist-vendored
+*.ipynb linguist-vendored

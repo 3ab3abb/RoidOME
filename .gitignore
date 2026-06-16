@@ -22,3 +22,16 @@ target
 
 
 .DS_Store
+
+
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# PlatformIO library dependencies
+firmware/*/lib/
+firmware/*/.pio/
+Exercises/*/.pio/
+Exercises/*/firmware/.pio/
