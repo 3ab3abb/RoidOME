@@ -78,7 +78,8 @@ fn handle_message(app: &mut App,topic:&str , payload :&str ) {
              app.update_snapshot(payload.to_string());
         }
         
-        _ => {}
+        _ => {eprintln!("Unhandled topic: '{}'", topic);}
+
     }
 }
 
@@ -109,7 +110,7 @@ pub async fn start_mqtt(app: Arc<Mutex<App>>){
                 eprintln!("MQTT error: {}", e);
                 break;
             }
-            _ => {eprintln!("Unhandled topic: '{}'", topic);}
+            _ => {}        
         }
     }
 }

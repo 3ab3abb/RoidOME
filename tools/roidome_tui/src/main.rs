@@ -3,32 +3,43 @@ mod ui;
 mod mqtt;
 
 use app::App;
+use ratatui_image::picker::Picker;
 use std::sync::{Arc, Mutex};
 use crossterm::event::{self, Event, KeyCode};
-
 use std::time::Duration;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let app = Arc::new(Mutex::new(App::new()));
+// ← sync outer function — NO tokio runtime yet
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Picker query MUST run before tokio AND before ratatui::init()
+    let picker = Picker::from_query_stdio()?;
+    eprintln!("Protocol: {:?}", picker.protocol_type());
 
-    // MQTT runs in async background task
+    // now start tokio runtime and hand off the picker
+    tokio::runtime::Runtime::new()?.block_on(async_main(picker))
+}
+
+async fn async_main(picker: Picker) -> Result<(), Box<dyn std::error::Error>> {
+    let app = Arc::new(Mutex::new(App::new_with_picker(picker)));
+
+    // MQTT task
     let app_mqtt = Arc::clone(&app);
     tokio::spawn(async move {
         mqtt::start_mqtt(app_mqtt).await;
     });
 
-    // TUI runs directly in main — no spawn_blocking
+    // TUI — ratatui::init() AFTER picker, AFTER tokio starts
     let mut terminal = ratatui::init();
     let app_tui = Arc::clone(&app);
 
     loop {
         {
-            let app = app_tui.lock().unwrap();
+            let mut app = app_tui.lock().unwrap();
             if !app.running {
                 break;
             }
-            terminal.draw(|frame| ui::ui(frame, &app)).unwrap();
+            terminal.draw(|frame| {
+                ui::ui(frame, &mut app);
+            })?;
         }
 
         if event::poll(Duration::from_millis(250))? {
@@ -47,4 +58,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ratatui::restore();
     Ok(())
 }
-

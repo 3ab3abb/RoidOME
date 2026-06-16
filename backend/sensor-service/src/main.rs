@@ -239,7 +239,15 @@ async fn store_frame(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis();
-    let frames_dir = std::env::var("FRAMES_DIR").unwrap_or_else(|_| "./frames".to_string());
+
+    let frames_dir = std::env::var("FRAMES_DIR").unwrap_or_else(|_| {
+        std::env::current_dir()
+            .unwrap()
+            .join("frames")
+            .to_string_lossy()
+            .to_string()
+    });
+
     let dir = format!("{}/{}/{}" ,frames_dir,source_type,device_id ) ; 
     let file_path = format!("{}/{}.jpg",dir,timestamp,) ; 
     tokio::fs::create_dir_all(&dir).await? ;  
